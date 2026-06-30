@@ -28,32 +28,34 @@ if st.button("🚀 Replace Numbers in All PDFs", type="primary", use_container_w
 
         try:
             doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-            replaced_count = 0
-
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                text = page.get_text()
-
-                # Better phone number detection
-                phone_patterns = re.findall(r'[\+]?[0-9\s\-\(\)\.]{8,20}', text)
+            
+            for page in doc:
+                # Find all text instances
+                text_instances = page.get_text("dict")
                 
-                for pattern in phone_patterns:
-                    # Clean and search
-                    instances = page.search_for(pattern.strip())
-                    for inst in instances:
-                        page.add_redact_annot(inst)
-                        page.apply_redactions()
-                        page.insert_text(
-                            inst.tl, 
-                            usa_number, 
-                            fontsize=inst.height * 0.85,
-                            color=(0, 0, 0)
-                        )
-                        replaced_count += 1
+                for block in text_instances["blocks"]:
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                text = span["text"]
+                                # Detect phone numbers
+                                if re.search(r'[\+]?[0-9\s\-\(\)\.]{8,}', text):
+                                    rect = fitz.Rect(span["bbox"])
+                                    # Redact old text properly
+                                    page.add_redact_annot(rect, fill=(1,1,1))
+                                    page.apply_redactions()
+                                    # Insert new number
+                                    page.insert_text(
+                                        rect.tl,
+                                        usa_number,
+                                        fontsize=span["size"] * 0.95,
+                                        color=(0, 0, 0),
+                                        fontname="helv"
+                                    )
 
-            # Save and offer download
+            # Save with optimization
             output_buffer = BytesIO()
-            doc.save(output_buffer)
+            doc.save(output_buffer, garbage=3, clean=True, deflate=True)
             doc.close()
 
             st.download_button(
